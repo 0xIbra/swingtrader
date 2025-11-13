@@ -1,0 +1,4 @@
+"""
+Swing Trading System
+"""
+
