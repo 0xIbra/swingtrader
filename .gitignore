@@ -8,6 +8,10 @@ __pycache__/
 # Data
 *.db
 *.sqlite3
+*.csv
+*.parquet
+data_5m/
+
 
 # Models
 models/*.pkl
