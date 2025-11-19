@@ -242,10 +242,12 @@ def demo_dataloader():
     print("="*80)
     print("TASK 11: PyTorch Dataset + DataLoader Demo")
     print("="*80)
-
-    # Load all dataloaders
-    data_dir = '/Users/ibra/code/swingtrader/data'
-    loaders = load_all_dataloaders(data_dir, batch_size=64, num_workers=4)
+    
+    # Load all dataloaders - use relative path from script location
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+    data_dir = project_root / 'data'
+    loaders = load_all_dataloaders(str(data_dir), batch_size=64, num_workers=4)
 
     # Print dataset summaries
     print(loaders['train_dataset'].summary())

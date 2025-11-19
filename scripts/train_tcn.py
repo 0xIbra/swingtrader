@@ -527,8 +527,8 @@ def train_model(
     weight_decay: float = 1e-5,
     grad_clip: Optional[float] = 1.0,
     early_stopping_patience: int = 10,
-    checkpoint_dir: str = '/Users/ibra/code/swingtrader/checkpoints',
-    log_dir: str = '/Users/ibra/code/swingtrader/logs',
+    checkpoint_dir: Optional[str] = None,
+    log_dir: Optional[str] = None,
     device: str = 'cpu',
     resume_from: Optional[str] = None
 ):
@@ -545,11 +545,20 @@ def train_model(
         weight_decay: L2 regularization
         grad_clip: Gradient clipping value
         early_stopping_patience: Patience for early stopping
-        checkpoint_dir: Directory to save checkpoints
-        log_dir: Directory to save logs
+        checkpoint_dir: Directory to save checkpoints (None = auto-detect)
+        log_dir: Directory to save logs (None = auto-detect)
         device: Device to train on
         resume_from: Path to checkpoint to resume from
     """
+    # Set default paths relative to project root if not provided
+    if checkpoint_dir is None or log_dir is None:
+        script_dir = Path(__file__).parent
+        project_root = script_dir.parent
+        if checkpoint_dir is None:
+            checkpoint_dir = str(project_root / 'checkpoints')
+        if log_dir is None:
+            log_dir = str(project_root / 'logs')
+    
     print("\n" + "="*80)
     print("Training Configuration")
     print("="*80)
@@ -681,11 +690,15 @@ def main():
     print("TASK 13: Training Loop")
     print("="*80)
     
+    # Get project root directory (cross-platform)
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+    
     # Configuration
     CONFIG = {
-        'data_dir': '/Users/ibra/code/swingtrader/data',
-        'checkpoint_dir': '/Users/ibra/code/swingtrader/checkpoints',
-        'log_dir': '/Users/ibra/code/swingtrader/logs',
+        'data_dir': str(project_root / 'data'),
+        'checkpoint_dir': str(project_root / 'checkpoints'),
+        'log_dir': str(project_root / 'logs'),
         'batch_size': 64,
         'num_workers': 4,
         'num_epochs': 50,

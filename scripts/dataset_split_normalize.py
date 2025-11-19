@@ -382,13 +382,17 @@ def save_normalized_dataset(
 
 def main():
     """Main pipeline execution"""
-
+    
     print("="*80)
     print("TASK 10: Dataset Split + Normalization")
     print("="*80)
-
+    
+    # Get project root directory (cross-platform)
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+    
     # Load sequence dataset
-    input_file = '/Users/ibra/code/swingtrader/data/sequences_eurusd_1h_168.pkl'
+    input_file = project_root / 'data' / 'sequences_eurusd_1h_168.pkl'
     print(f"\nLoading sequence dataset: {input_file}")
 
     with open(input_file, 'rb') as f:
@@ -417,7 +421,7 @@ def main():
     normalized_splits = normalize_splits(splits, norm_params)
 
     # Step 4: Save normalized dataset
-    output_dir = '/Users/ibra/code/swingtrader/data'
+    output_dir = project_root / 'data'
     metadata = {
         'feature_names': dataset['feature_names'],
         'seq_len': dataset['seq_len'],

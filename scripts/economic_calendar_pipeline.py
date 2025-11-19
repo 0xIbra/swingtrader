@@ -314,8 +314,12 @@ def main():
     print("TASK 3: Economic Calendar Pipeline")
     print("="*80)
 
+    # Get project root directory (cross-platform)
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+
     # Load existing price data with sessions
-    price_file = '/Users/ibra/code/swingtrader/EURUSD_1H_2020_2025_with_sessions.csv'
+    price_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_sessions.csv'
     print(f"\nLoading price data from: {price_file}")
     price_df = pd.read_csv(price_file)
     price_df['timestamp'] = pd.to_datetime(price_df['timestamp'], utc=True)
@@ -352,7 +356,7 @@ def main():
 
     # Save raw events
     if not events_df.empty:
-        events_file = '/Users/ibra/code/swingtrader/economic_events_2020_2025.csv'
+        events_file = project_root / 'data' / 'economic_events_2020_2025.csv'
         events_df.to_csv(events_file, index=False)
         print(f"\n✓ Events saved to: {events_file}")
 
@@ -363,7 +367,7 @@ def main():
     price_df = generate_event_features(price_df, events_df)
 
     # Step 4: Save enhanced data
-    output_file = '/Users/ibra/code/swingtrader/EURUSD_1H_2020_2025_with_events.csv'
+    output_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_events.csv'
     price_df.to_csv(output_file, index=False)
 
     print("\n" + "="*80)

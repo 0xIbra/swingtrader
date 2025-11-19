@@ -271,8 +271,12 @@ def main():
     print("TASK 6: Internal Price Features Pipeline")
     print("="*80)
 
+    # Get project root directory (cross-platform)
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+
     # Load existing data with macro features
-    input_file = '/Users/ibra/code/swingtrader/EURUSD_1H_2020_2025_with_macro.csv'
+    input_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_macro.csv'
     print(f"\nLoading data from: {input_file}")
     df = pd.read_csv(input_file)
     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
@@ -334,7 +338,7 @@ def main():
     print("\n✓ NaN values handled")
 
     # Save enhanced data
-    output_file = '/Users/ibra/code/swingtrader/EURUSD_1H_2020_2025_with_price_features.csv'
+    output_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_price_features.csv'
     df.to_csv(output_file, index=False)
 
     print("\n" + "="*80)

@@ -288,8 +288,12 @@ def main():
     print("TASK 9: Sequence Window Builder")
     print("="*80)
 
+    # Get project root directory (cross-platform)
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+
     # Load data with direction labels
-    input_file = '/Users/ibra/code/swingtrader/data/EURUSD_1H_2020_2025_with_direction.csv'
+    input_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_direction.csv'
     print(f"\nLoading data from: {input_file}")
     df = pd.read_csv(input_file)
     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
@@ -341,13 +345,13 @@ def main():
     print("Step 4: Saving Dataset")
     print("="*80)
 
-    output_dir = '/Users/ibra/code/swingtrader/data'
+    output_dir = project_root / 'data'
     filename = 'sequences_eurusd_1h_168.pkl'
 
-    saved_path = save_dataset(dataset, output_dir, filename)
+    saved_path = save_dataset(dataset, str(output_dir), filename)
 
     # Save metadata as readable text
-    metadata_file = output_dir + '/sequences_metadata.txt'
+    metadata_file = str(output_dir / 'sequences_metadata.txt')
     with open(metadata_file, 'w') as f:
         f.write("="*80 + "\n")
         f.write("Sequence Dataset Metadata\n")

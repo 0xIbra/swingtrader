@@ -489,16 +489,22 @@ def demo_model():
     print("="*80)
     print("TASK 12: TCN Model Implementation Demo")
     print("="*80)
-
+    
     # Check for GPU
     device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"\n🖥️  Using device: {device}")
-
+    
     # Load a sample batch from training data
     print(f"\n📦 Loading sample data...")
     from pytorch_dataset import SequenceDataset
-
-    dataset = SequenceDataset('/Users/ibra/code/swingtrader/data/train_normalized.pkl')
+    from pathlib import Path
+    
+    # Use relative path from script location
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+    data_file = project_root / 'data' / 'train_normalized.pkl'
+    
+    dataset = SequenceDataset(str(data_file))
 
     # Get class weights for balanced training
     class_weights = dataset.get_class_weights()

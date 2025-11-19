@@ -377,8 +377,12 @@ def main():
         print("Please set OPENROUTER_API_KEY to use LLM sentiment extraction")
         print("Proceeding with neutral sentiment fallback...")
 
+    # Get project root directory (cross-platform)
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+
     # Load existing price data with events
-    price_file = '/Users/ibra/code/swingtrader/EURUSD_1H_2020_2025_with_events.csv'
+    price_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_events.csv'
     print(f"\nLoading price data from: {price_file}")
     price_df = pd.read_csv(price_file)
     price_df['timestamp'] = pd.to_datetime(price_df['timestamp'], utc=True)
@@ -391,7 +395,7 @@ def main():
     end_date = price_df['timestamp'].max().to_pydatetime()
 
     # Check if cached news file exists
-    news_file = '/Users/ibra/code/swingtrader/news_articles_2020_2025.csv'
+    news_file = project_root / 'data' / 'news_articles_2020_2025.csv'
 
     if os.path.exists(news_file):
         print("\n" + "="*80)
@@ -431,7 +435,7 @@ def main():
             print(f"\n✓ News cached to: {news_file}")
 
     # Check if sentiment-enhanced data already exists
-    output_file = '/Users/ibra/code/swingtrader/EURUSD_1H_2020_2025_with_sentiment.csv'
+    output_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_sentiment.csv'
 
     if os.path.exists(output_file):
         print("\n" + "="*80)
