@@ -15,6 +15,21 @@ This includes:
 
 Everything.
 
+## **📊 Data Configuration**
+
+**Timeframe:** 1-hour (1h) candlesticks
+**Data Provider:** EODHD API (https://eodhd.com)
+**Currency Pair:** EURUSD
+**Historical Range:** October 2020 - Present (EODHD intraday limitation)
+**Sequence Length:** 168 bars (1 week of hourly data)
+**Prediction Horizon:** 24 bars (24 hours / 1 day)
+
+**EODHD API Endpoints Used:**
+- Intraday OHLC: `https://eodhd.com/api/intraday/{SYMBOL}`
+- Economic Calendar: `https://eodhd.com/api/economic-events`
+- News: `https://eodhd.com/api/news`
+- Macro Indices: Same intraday endpoint with different symbols
+
 ---
 
 # **TASK 1 — Raw Market Data Pipeline**
@@ -23,16 +38,17 @@ Everything.
 **Type:** Backend / Data
 **Specs:**
 
-* Integrate with data provider for **5m** OR fetch **1m/tick** → resample to **5m**.
+* Use **EODHD API** intraday endpoint to fetch **1h** OHLC data for EURUSD.
+* Data available from **October 2020** onwards (EODHD limitation).
 * Fields required:
 
   * timestamp UTC
   * open, high, low, close
-  * tick_volume
-  * bid/ask for spread (if available)
+  * volume (note: forex volume may be null)
 * Output Parquet partitioned by `year/month/pair`.
 * Handle gaps: forward-fill price but add `missing_flag = 1`.
 * Enforce UTC alignment.
+* API endpoint: `https://eodhd.com/api/intraday/{SYMBOL}.FOREX`
 
 ---
 
@@ -64,23 +80,23 @@ Everything.
 **Type:** Data Integration
 **Specs:**
 
-* Fetch from:
-
-  * FinancialModelingPrep, Forex Factory API, EODHD, or custom scraping.
+* Fetch from **EODHD Economic Calendar API**:
+  * Endpoint: `https://eodhd.com/api/economic-events`
+  * Supports filtering by date range and currency
 * Required fields:
 
   * event_time (UTC)
   * currency (USD, EUR, GBP, JPY…)
   * impact_level (0–2)
   * event_type (categorical)
-* For each 5m bar compute:
+* For each 1h bar compute:
 
-  * `minutes_to_next_event`
-  * `minutes_since_last_event`
-  * `is_event_now`
+  * `hours_to_next_event`
+  * `hours_since_last_event`
+  * `is_event_now` (within current hour)
   * one-hot encode event currency
   * severity score ∈ {0,1,2}
-* Forward-fill features within ±30 minutes window.
+* Forward-fill features within ±3 hours window.
 * Save as separate column group.
 
 ---
@@ -91,7 +107,9 @@ Everything.
 **Type:** NLP / Feature Engineering
 **Specs:**
 
-* Fetch live headlines from news API.
+* Fetch live headlines from **EODHD News API**:
+  * Endpoint: `https://eodhd.com/api/news`
+  * Filter by forex/financial news
 * Every hour, run through LLM prompt:
 
   * Extract sentiment for each currency: USD, EUR, GBP, JPY
@@ -101,7 +119,7 @@ Everything.
 
   * `sent_USD`, `sent_EUR`, `sent_GBP`, `sent_JPY`
   * `sent_risk`
-* Forward-fill to all 5m bars within the hour.
+* Each 1h bar gets the sentiment from that hour.
 * Store as float features.
 
 ---
@@ -111,24 +129,26 @@ Everything.
 **Title:** Fetch external macro indicators (VIX, SPX, yields, DXY)
 **Type:** Data Integration
 **Specs:**
-From any market data vendor fetch:
+From **EODHD API** fetch intraday 1h data for:
 
-* SP500 Futures price
-* VIX index
-* U.S. 10Y yield (and optionally 2Y)
-* DXY (Dollar index)
-* GOLD
-* OIL
+* SP500 Futures (^GSPC or ES=F)
+* VIX index (^VIX)
+* U.S. 10Y yield (^TNX)
+* DXY (Dollar index - DX-Y.NYB)
+* GOLD (GC=F)
+* OIL (CL=F)
 
-Compute per 5m bar:
+API endpoint: `https://eodhd.com/api/intraday/{SYMBOL}`
+
+Compute per 1h bar:
 
 * returns:
 
-  * `spx_ret_5m`, `vix_ret_5m`, `dxy_ret_5m`
+  * `spx_ret_1h`, `vix_ret_1h`, `dxy_ret_1h`
 * absolute levels:
 
   * `vix_level`, `yield10_level`, `dxy_level`
-* vol-adjusted z-scores:
+* vol-adjusted z-scores (rolling 24h window):
 
   * `vix_z`, `dxy_z`, `yield10_z`
 
@@ -141,19 +161,19 @@ Align by timestamp, forward-fill missing data.
 **Title:** Compute price-derived technical features
 **Type:** ML Features
 **Specs:**
-For each bar compute:
+For each 1h bar compute:
 
-* log returns (1, 3, 6, 12 bars)
-* ATR(14)
-* rolling volatility (20, 50 bars)
-* EMA20, EMA50, EMA100
+* log returns (1, 3, 6, 12, 24 bars) = 1h, 3h, 6h, 12h, 24h
+* ATR(14) = 14-hour ATR
+* rolling volatility (24, 72, 168 bars) = 1 day, 3 days, 1 week
+* EMA24, EMA72, EMA168 (1 day, 3 days, 1 week)
 * RSI14
 * Candle shape:
 
   * body_norm, upper_wick_norm, lower_wick_norm (normalized by ATR)
 * Recent structure:
 
-  * `dist_high_24`, `dist_low_24`
+  * `dist_high_168`, `dist_low_168` (distance from 1-week high/low)
   * `bars_since_high`, `bars_since_low`
 
 Store into unified feature table.
@@ -167,7 +187,7 @@ Store into unified feature table.
 **Specs:**
 For each timestamp `t`:
 
-H = future horizon (12 bars)
+H = future horizon (24 bars = 24 hours = 1 day)
 entry = close[t]
 
 Compute:
@@ -228,11 +248,11 @@ Store `class`.
 **Type:** ML Infra
 **Specs:**
 
-* seq_len = 128 bars
+* seq_len = 168 bars (168 hours = 1 week of 1h bars)
 * For each timestamp with labels:
 
   ```
-  X = features[t-127 : t]   # [128, feature_dim]
+  X = features[t-167 : t]   # [168, feature_dim]
   y_class = class[t]
   y_reg   = [mfe_l, mae_l, mfe_s, mae_s]
   ```
@@ -266,7 +286,7 @@ Store `class`.
 Dataset returns:
 
 ```
-X_t        # [128, feature_dim]
+X_t        # [168, feature_dim]
 y_class_t  # int
 y_reg_t    # [4]
 ```
@@ -351,9 +371,9 @@ L = CE(direction) + λ * MSE(mfe/mae regression)
 **Title:** Build offline trading simulator
 **Type:** Trading Logic
 **Specs:**
-For each bar in test segment:
+For each 1h bar in test segment:
 
-* Load last 128-bar X window
+* Load last 168-bar X window (1 week)
 * Predict:
 
   * `p_flat`, `p_long`, `p_short`
@@ -364,8 +384,8 @@ For each bar in test segment:
   * `TP = mfe_pred * ATR`
 * Simulate trade with:
 
-  * spread
-  * commission
+  * spread (typically 1-2 pips for EURUSD)
+  * commission (if applicable)
   * slippage
 * Track:
 
@@ -383,8 +403,9 @@ For each bar in test segment:
 **Type:** Backend / ML Inference
 **Specs:**
 
-* Subscribe to broker 5m candles
-* Maintain rolling 128-bar window
+* Subscribe to **EODHD real-time intraday feed** for 1h candles
+  * Endpoint: WebSocket or polling via intraday API
+* Maintain rolling 168-bar window (1 week)
 * Compute features in real time:
 
   * technicals
@@ -392,7 +413,7 @@ For each bar in test segment:
   * macro regime
   * sentiment
   * event proximity
-* On each new bar:
+* On each new 1h bar:
 
   * run model
   * log `p_long, p_short, p_flat`
@@ -437,6 +458,38 @@ Trigger alerts if:
   * `/features`
 * Provide cron jobs for:
 
-  * news sentiment updates
-  * macro data fetch
-  * economic calendar refresh
+  * news sentiment updates (hourly via EODHD News API)
+  * macro data fetch (hourly via EODHD)
+  * economic calendar refresh (daily via EODHD)
+  * 1h candle data updates (hourly via EODHD Intraday API)
+
+---
+
+## **📝 Summary of Changes from 5m to 1h Timeframe**
+
+**Timeframe Adjustments:**
+- Bar interval: 5m → **1h**
+- Sequence length: 128 bars (10.67h) → **168 bars (1 week)**
+- Prediction horizon: 12 bars (1h) → **24 bars (1 day)**
+- Returns: 5m, 15m, 30m, 60m → **1h, 3h, 6h, 12h, 24h**
+- Volatility windows: 20, 50 → **24, 72, 168** (1d, 3d, 1w)
+- EMAs: 20, 50, 100 → **24, 72, 168**
+
+**Feature Engineering:**
+- Event proximity: minutes → **hours**
+- Recent structure: 24-bar high/low → **168-bar high/low** (1 week)
+- Macro returns: 5m → **1h**
+- Z-score windows: adjusted to 24h rolling
+
+**Data Provider:**
+- All data from **EODHD API**
+- Forex intraday: Oct 2020 - Present
+- Economic calendar via EODHD
+- News sentiment via EODHD News API
+- Macro data (VIX, SPX, DXY, etc.) via EODHD
+
+**Trading Implications:**
+- Longer holding periods (hours/days vs minutes)
+- More stable signals with less noise
+- Better suited for swing trading style
+- Reduced spread/commission impact relative to move size
