@@ -141,8 +141,8 @@ def analyze_direction_labels(df: pd.DataFrame) -> None:
 
 def optimize_parameters(
     df: pd.DataFrame,
-    cost_factors: list = [0.05, 0.1, 0.15, 0.2],
-    thresholds: list = [0.3, 0.5, 0.7, 1.0]
+    cost_factors: list = [0.1, 0.15, 0.2, 0.25],
+    thresholds: list = [0.5, 0.7, 1.0, 1.3, 1.5]
 ) -> Tuple[float, float]:
     """
     Try different parameter combinations and suggest optimal values.
@@ -201,9 +201,12 @@ def optimize_parameters(
             # Calculate trading opportunity (non-FLAT percentage)
             trading_opp = 100 - flat_pct
 
-            # Score: balance trading opportunity with class balance
-            # Lower imbalance is better, higher trading_opp is better
-            score = trading_opp - (imbalance * 2)  # Penalize imbalance
+            # Score: prefer FLAT in 20-30% range for better ML training
+            # Lower imbalance is better, FLAT closer to 25% is better
+            target_flat = 25.0
+            flat_penalty = abs(flat_pct - target_flat) * 3  # Heavily penalize deviation from 25%
+            imbalance_penalty = imbalance * 2  # Keep LONG/SHORT balanced
+            score = 100 - flat_penalty - imbalance_penalty
 
             results.append({
                 'cost': cost,
