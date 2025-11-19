@@ -45,6 +45,78 @@ class MetricsTracker:
         self.best_val_mae = float('inf')
         self.best_epoch = 0
 
+        # Initialize log file with header
+        self.log_file = self.log_dir / 'training_log.txt'
+        self._initialize_log_file()
+
+    def _initialize_log_file(self):
+        """Initialize log file with header and timestamp."""
+        with open(self.log_file, 'w', encoding='utf-8') as f:
+            f.write("="*100 + "\n")
+            f.write("TRAINING LOG\n")
+            f.write("="*100 + "\n")
+            f.write(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("="*100 + "\n\n")
+        print(f"📝 Logging to: {self.log_file}")
+
+    def log_epoch(self, epoch: int, num_epochs: int, train_metrics: Dict, val_metrics: Dict):
+        """
+        Log epoch metrics to text file in real-time.
+
+        Args:
+            epoch: Current epoch number
+            num_epochs: Total number of epochs
+            train_metrics: Training metrics dictionary
+            val_metrics: Validation metrics dictionary
+        """
+        with open(self.log_file, 'a', encoding='utf-8') as f:
+            f.write("="*100 + "\n")
+            f.write(f"Epoch {epoch}/{num_epochs} | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("="*100 + "\n\n")
+
+            # Training metrics
+            f.write("TRAINING METRICS:\n")
+            f.write(f"  Total Loss:     {train_metrics['total_loss']:.6f}\n")
+            f.write(f"  CE Loss:        {train_metrics['ce_loss']:.6f}\n")
+            f.write(f"  Reg Loss:       {train_metrics['reg_loss']:.6f}\n")
+            f.write(f"  Accuracy:       {train_metrics['accuracy']:.4f}\n")
+            f.write(f"  F1 (macro):     {train_metrics['f1_macro']:.4f}\n")
+            f.write(f"  F1 (weighted):  {train_metrics['f1_weighted']:.4f}\n")
+            f.write(f"  F1 (FLAT):      {train_metrics['f1_flat']:.4f}\n")
+            f.write(f"  F1 (LONG):      {train_metrics['f1_long']:.4f}\n")
+            f.write(f"  F1 (SHORT):     {train_metrics['f1_short']:.4f}\n")
+            f.write(f"  Reg MAE:        {train_metrics['reg_mae']:.4f}\n")
+
+            # Validation metrics
+            f.write("\nVALIDATION METRICS:\n")
+            f.write(f"  Total Loss:     {val_metrics['total_loss']:.6f}\n")
+            f.write(f"  CE Loss:        {val_metrics['ce_loss']:.6f}\n")
+            f.write(f"  Reg Loss:       {val_metrics['reg_loss']:.6f}\n")
+            f.write(f"  Accuracy:       {val_metrics['accuracy']:.4f}\n")
+            f.write(f"  F1 (macro):     {val_metrics['f1_macro']:.4f}\n")
+            f.write(f"  F1 (weighted):  {val_metrics['f1_weighted']:.4f}\n")
+            f.write(f"  F1 (FLAT):      {val_metrics['f1_flat']:.4f}\n")
+            f.write(f"  F1 (LONG):      {val_metrics['f1_long']:.4f}\n")
+            f.write(f"  F1 (SHORT):     {val_metrics['f1_short']:.4f}\n")
+            f.write(f"  Reg MAE:        {val_metrics['reg_mae']:.4f}\n")
+
+            # GPU metrics (if available)
+            if 'gpu_memory_allocated_gb' in val_metrics:
+                f.write("\nGPU METRICS:\n")
+                f.write(f"  Memory Allocated: {val_metrics['gpu_memory_allocated_gb']:.2f} GB\n")
+                f.write(f"  Memory Reserved:  {val_metrics['gpu_memory_reserved_gb']:.2f} GB\n")
+
+            # Timing and learning rate
+            f.write("\nTRAINING INFO:\n")
+            f.write(f"  Epoch Time:     {train_metrics['epoch_time']:.2f} seconds\n")
+            f.write(f"  Learning Rate:  {train_metrics['learning_rate']:.6f}\n")
+
+            # Best model indicator
+            if val_metrics['f1_macro'] >= self.best_val_f1:
+                f.write(f"\n*** NEW BEST MODEL! (F1: {val_metrics['f1_macro']:.4f}, MAE: {val_metrics['reg_mae']:.4f}) ***\n")
+
+            f.write("\n")
+
     def update(self, epoch: int, metrics: Dict, split: str = 'train'):
         """
         Update metrics for an epoch.
@@ -81,6 +153,20 @@ class MetricsTracker:
             self.best_val_mae = val_mae
 
         return is_best
+
+    def finalize_log(self, total_epochs: int):
+        """Write final training summary to log file."""
+        with open(self.log_file, 'a', encoding='utf-8') as f:
+            f.write("\n" + "="*100 + "\n")
+            f.write("TRAINING COMPLETE\n")
+            f.write("="*100 + "\n")
+            f.write(f"Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Total Epochs: {total_epochs}\n")
+            f.write(f"\nBest Model:\n")
+            f.write(f"  Epoch:     {self.best_epoch}\n")
+            f.write(f"  F1 Score:  {self.best_val_f1:.4f}\n")
+            f.write(f"  MAE:       {self.best_val_mae:.4f}\n")
+            f.write("="*100 + "\n")
 
     def save_logs(self):
         """Save training history to JSON file."""
@@ -611,6 +697,14 @@ def train_model(
     # Training loop
     print("🚀 Starting training...\n")
 
+    # Debug: Check actual batch size being used
+    if start_epoch == 1:
+        sample_batch = next(iter(train_loader))
+        actual_batch_size = sample_batch[0].shape[0]
+        print(f"🔍 DEBUG - Actual batch size in DataLoader: {actual_batch_size}")
+        print(f"🔍 DEBUG - Model device: {next(model.parameters()).device}")
+        print(f"🔍 DEBUG - Model dtype: {next(model.parameters()).dtype}\n")
+
     for epoch in range(start_epoch, num_epochs + 1):
         epoch_start_time = time.time()
 
@@ -648,7 +742,10 @@ def train_model(
         metrics_tracker.update(epoch, train_metrics, 'train')
         metrics_tracker.update(epoch, val_metrics, 'val')
 
-        # Print summary
+        # Log epoch metrics to file
+        metrics_tracker.log_epoch(epoch, num_epochs, train_metrics, val_metrics)
+
+        # Print summary to console
         metrics_tracker.print_epoch_summary(epoch, num_epochs, train_metrics, val_metrics)
 
         # Save best model
@@ -684,6 +781,12 @@ def train_model(
     print("Training Complete!")
     print("="*80)
     print(f"\n💾 Saving training logs...")
+
+    # Finalize log file with summary
+    metrics_tracker.finalize_log(epoch)
+    print(f"  ✓ Training log saved to {metrics_tracker.log_file}")
+
+    # Save JSON and CSV logs
     metrics_tracker.save_logs()
     metrics_tracker.save_csv()
 
@@ -766,8 +869,8 @@ def main():
         'n_features': 55,
         'n_layers': 5,
         'dropout': 0.2,
-        'lambda_reg': 1.0,
-        'use_class_weights': True
+        'lambda_reg': 0.05,  # CRITICAL FIX: Reduce from 1.0 to 0.05 to balance losses
+        'use_class_weights': False  # DISABLED: Class imbalance too extreme (58:1), hurts training
     }
 
     # Load data
