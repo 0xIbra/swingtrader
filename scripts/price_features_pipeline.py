@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 import numpy as np
+from pathlib import Path
 from tqdm import tqdm
 
 
@@ -223,6 +224,58 @@ def compute_recent_structure(df: pd.DataFrame, window: int = 168) -> pd.DataFram
     return df
 
 
+def normalize_by_atr(df: pd.DataFrame, atr_col: str = 'atr_14') -> pd.DataFrame:
+    """
+    Normalize key price features by ATR to make them regime-invariant.
+
+    This helps the model generalize across different volatility regimes
+    (e.g., calm vs volatile markets).
+
+    Args:
+        df: DataFrame with price features and ATR
+        atr_col: Name of the ATR column to use for normalization
+
+    Returns:
+        DataFrame with ATR-normalized features added
+    """
+    print("\n" + "="*80)
+    print("Normalizing Features by ATR (Regime-Invariant)")
+    print("="*80)
+
+    # Replace original features with ATR-normalized versions
+    # This makes the model robust to volatility regime changes
+
+    # 1. Normalize log returns by ATR
+    return_features = ['ret_1h', 'ret_3h', 'ret_6h', 'ret_12h', 'ret_24h']
+    for feat in return_features:
+        if feat in df.columns:
+            df[feat] = df[feat] / (df[atr_col] + 1e-8)  # Avoid division by zero
+            print(f"  ✓ {feat} normalized by ATR")
+
+    # 2. Normalize EMA distances by ATR
+    ema_features = ['ema_24', 'ema_72', 'ema_168']
+    for feat in ema_features:
+        if feat in df.columns:
+            # Convert EMA level to distance from current price, normalized by ATR
+            df[feat] = (df['close'] - df[feat]) / (df[atr_col] + 1e-8)
+            print(f"  ✓ {feat} converted to ATR-normalized distance from price")
+
+    # 3. Normalize rolling volatility by ATR
+    vol_features = ['vol_24h', 'vol_72h', 'vol_168h']
+    for feat in vol_features:
+        if feat in df.columns:
+            df[feat] = df[feat] / (df[atr_col] + 1e-8)
+            print(f"  ✓ {feat} normalized by ATR")
+
+    # 4. Normalize recent structure distances by ATR (already done in compute_recent_structure)
+    # dist_high_168 and dist_low_168 are already normalized
+
+    print("\n✓ All key features normalized by ATR for regime-invariance")
+    print("  Model will now generalize better across calm/volatile periods")
+
+    return df
+
+
 def compute_all_price_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Compute all internal price features.
@@ -260,6 +313,9 @@ def compute_all_price_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # 7. Recent structure (1 week = 168 hours)
     df = compute_recent_structure(df, window=168)
+
+    # 8. ATR-normalize key features for regime invariance
+    df = normalize_by_atr(df, atr_col='atr_14')
 
     return df
 
