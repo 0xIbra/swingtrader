@@ -6,13 +6,20 @@ Implement training + validation engine with metrics tracking and checkpointing.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Add parent directories to path for imports
+script_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(script_dir / '../task_11_pytorch_dataset'))
+sys.path.insert(0, str(script_dir / '../task_12_model'))
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from typing import Dict, Tuple, Optional
 import json
 import time
@@ -646,8 +653,8 @@ def train_model(
     """
     # Set default paths relative to project root if not provided
     if checkpoint_dir is None or log_dir is None:
-        script_dir = Path(__file__).parent
-        project_root = script_dir.parent
+        script_dir = Path(__file__).resolve().parent
+        project_root = script_dir.parent.parent  # scripts/task_13_training -> scripts -> project_root
         if checkpoint_dir is None:
             checkpoint_dir = str(project_root / 'checkpoints')
         if log_dir is None:
@@ -811,8 +818,8 @@ def main():
     print("="*80)
 
     # Get project root directory (cross-platform)
-    script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    script_dir = Path(__file__).resolve().parent
+    project_root = script_dir.parent.parent  # scripts/task_13_training -> scripts -> project_root
 
     # Configuration
     # Device selection first (to optimize config based on device)

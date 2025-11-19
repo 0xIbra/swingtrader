@@ -3,14 +3,18 @@
 Evaluate 2024-2025 model on test set.
 """
 
+import sys
+from pathlib import Path
+
+# Add parent directories to path for imports
+script_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(script_dir / '../task_11_pytorch_dataset'))
+sys.path.insert(0, str(script_dir / '../task_12_model'))
+
 import torch
 import pickle
 import numpy as np
-from pathlib import Path
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix
-
-import sys
-sys.path.append(str(Path(__file__).parent))
 
 from tcn_model import DualHeadTCN
 from pytorch_dataset import SequenceDataset
@@ -100,8 +104,8 @@ def main():
     print("="*80)
 
     # Paths
-    script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    script_dir = Path(__file__).resolve().parent
+    project_root = script_dir.parent.parent  # scripts/task_13_training -> scripts -> project_root
     data_dir = project_root / 'data'
     checkpoint_dir = project_root / 'checkpoints_2024_2025'
 

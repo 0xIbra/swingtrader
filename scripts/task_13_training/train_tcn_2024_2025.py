@@ -7,6 +7,11 @@ Focus on recent market patterns.
 import sys
 from pathlib import Path
 
+# Add parent directories to path for imports
+script_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(script_dir / '../task_11_pytorch_dataset'))
+sys.path.insert(0, str(script_dir / '../task_12_model'))
+
 from train_tcn import train_model, DualHeadTCN, DualHeadLoss
 from pytorch_dataset import SequenceDataset
 from torch.utils.data import DataLoader
