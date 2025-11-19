@@ -11,6 +11,7 @@ __pycache__/
 *.csv
 *.parquet
 data_5m/
+data/
 
 
 # Models
