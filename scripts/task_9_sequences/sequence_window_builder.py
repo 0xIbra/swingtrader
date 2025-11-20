@@ -36,6 +36,7 @@ def select_feature_columns(df: pd.DataFrame) -> list:
     # Define columns to exclude
     exclude_cols = [
         'timestamp',           # Not a feature
+        'time_diff',           # Object type, not numeric
         'open', 'high', 'low', 'close', 'volume',  # Use derived features instead
         'MFE_long', 'MAE_long', 'MFE_short', 'MAE_short',  # Use normalized versions
         'reward_long', 'reward_short',  # Derived from labels
@@ -52,7 +53,7 @@ def select_feature_columns(df: pd.DataFrame) -> list:
 def build_sequences(
     df: pd.DataFrame,
     feature_cols: list,
-    seq_len: int = 168,
+    seq_len: int = 42,
     skip_missing: bool = True
 ) -> dict:
     """
@@ -290,10 +291,10 @@ def main():
 
     # Get project root directory (cross-platform)
     script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    project_root = script_dir.parent.parent  # Scripts are in task_XX subdirectories
 
     # Load data with direction labels
-    input_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_direction.csv'
+    input_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_direction.csv'
     print(f"\nLoading data from: {input_file}")
     df = pd.read_csv(input_file)
     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
@@ -334,7 +335,7 @@ def main():
     print("Step 2: Building Sequences")
     print("="*80)
 
-    SEQ_LEN = 168  # 1 week of hourly data
+    SEQ_LEN = 42  # 1 week of hourly data
     dataset = build_sequences(df, feature_cols, seq_len=SEQ_LEN, skip_missing=False)
 
     # Step 3: Analyze sequences
@@ -346,7 +347,7 @@ def main():
     print("="*80)
 
     output_dir = project_root / 'data'
-    filename = 'sequences_eurusd_1h_168.pkl'
+    filename = 'sequences_eurusd_4h_42.pkl'
 
     saved_path = save_dataset(dataset, str(output_dir), filename)
 

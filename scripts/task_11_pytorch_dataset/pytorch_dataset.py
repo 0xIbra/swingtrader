@@ -245,7 +245,7 @@ def demo_dataloader():
     
     # Load all dataloaders - use relative path from script location
     script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    project_root = script_dir.parent.parent  # Scripts are in task_XX subdirectories
     data_dir = project_root / 'data'
     loaders = load_all_dataloaders(str(data_dir), batch_size=64, num_workers=4)
 

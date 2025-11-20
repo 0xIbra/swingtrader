@@ -12,7 +12,9 @@ load_dotenv(find_dotenv())
 import os
 import requests
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
+from pathlib import Path
 from tqdm import tqdm
 import time
 
@@ -22,7 +24,7 @@ BASE_URL = 'https://eodhd.com/api/economic-events'
 
 def fetch_economic_events(start_date: datetime, end_date: datetime, api_key: str) -> pd.DataFrame:
     """
-    Fetch economic calendar events from EODHD API.
+    Fetch ALL economic calendar events from EODHD API using offset-based pagination.
 
     Args:
         start_date: Start date for events
@@ -33,20 +35,31 @@ def fetch_economic_events(start_date: datetime, end_date: datetime, api_key: str
         DataFrame with economic events
     """
     all_events = []
+    url = BASE_URL
 
-    # Split into monthly chunks to avoid API limits
-    current_date = start_date
+    print(f"\nFetching economic events from EODHD API...")
+    print(f"Date range: {start_date.date()} to {end_date.date()}")
+    print()
 
-    with tqdm(total=(end_date - start_date).days, desc="Fetching economic events") as pbar:
-        while current_date < end_date:
-            # Get one month at a time
-            chunk_end = min(current_date + timedelta(days=30), end_date)
+    # Format dates for API
+    from_date = start_date.strftime('%Y-%m-%d')
+    to_date = end_date.strftime('%Y-%m-%d')
 
-            url = BASE_URL
+    # Pagination parameters
+    limit = 1000  # Max per request
+    offset = 0
+    total_fetched = 0
+
+    print("📥 Fetching with offset-based pagination...")
+
+    with tqdm(desc="Fetching events", unit=" batches") as pbar:
+        while True:
             params = {
                 'api_token': api_key,
-                'from': current_date.strftime('%Y-%m-%d'),
-                'to': chunk_end.strftime('%Y-%m-%d'),
+                'from': from_date,
+                'to': to_date,
+                'limit': limit,
+                'offset': offset,
                 'fmt': 'json'
             }
 
@@ -55,29 +68,56 @@ def fetch_economic_events(start_date: datetime, end_date: datetime, api_key: str
 
                 if response.status_code == 200:
                     data = response.json()
+                    batch = []
 
-                    # EODHD returns events in a nested structure
+                    # EODHD returns events in a nested structure sometimes, or list
                     if isinstance(data, dict):
-                        # Flatten the nested structure
-                        for date_str, events_list in data.items():
-                            if isinstance(events_list, list):
-                                for event in events_list:
-                                    event['date'] = date_str
-                                    all_events.append(event)
+                        # Flatten the nested structure if it comes as dict
+                        # But with limit/offset it usually returns a list or specific structure
+                        # Let's handle the standard list response or the dict response
+                        if 'data' in data:
+                             batch = data['data']
+                        else:
+                            # Sometimes it returns {date: [events]}
+                            for date_str, events_list in data.items():
+                                if isinstance(events_list, list):
+                                    for event in events_list:
+                                        event['date'] = date_str
+                                        batch.append(event)
                     elif isinstance(data, list):
-                        all_events.extend(data)
-                else:
-                    print(f"\nWarning: API returned status code {response.status_code}")
-                    print(f"Response: {response.text[:200]}")
+                        batch = data
+                    else:
+                        print(f"\n⚠️  Unexpected response format at offset {offset}")
+                        break
 
-                # Rate limiting
-                time.sleep(0.5)
+                    # Add batch to results
+                    batch_size = len(batch)
+                    all_events.extend(batch)
+                    total_fetched += batch_size
+
+                    pbar.set_postfix({"fetched": total_fetched, "offset": offset})
+                    pbar.update(1)
+
+                    # Check if we got fewer than limit (means we're done)
+                    if batch_size < limit:
+                        print(f"\n✓ Reached end of results (got {batch_size} < {limit})")
+                        break
+
+                    # Move to next page
+                    offset += limit
+
+                    # Rate limiting
+                    time.sleep(0.5)
+
+                else:
+                    print(f"\n❌ API returned status code {response.status_code}")
+                    if response.text:
+                        print(f"Response: {response.text[:200]}")
+                    break
 
             except Exception as e:
-                print(f"\nError fetching data for {current_date}: {e}")
-
-            pbar.update((chunk_end - current_date).days)
-            current_date = chunk_end
+                print(f"\n❌ Error fetching data at offset {offset}: {e}")
+                break
 
     if not all_events:
         print("Warning: No events retrieved from API")
@@ -85,6 +125,17 @@ def fetch_economic_events(start_date: datetime, end_date: datetime, api_key: str
 
     # Convert to DataFrame
     df = pd.DataFrame(all_events)
+
+    # Remove duplicates
+    if 'date' in df.columns and 'event' in df.columns:
+        before_dedup = len(df)
+        # Create a unique key for deduplication
+        df['dedup_key'] = df['date'].astype(str) + df['event'].astype(str) + df['country'].astype(str)
+        df = df.drop_duplicates(subset=['dedup_key'], keep='first')
+        df = df.drop(columns=['dedup_key'])
+        after_dedup = len(df)
+        if before_dedup != after_dedup:
+            print(f"🧹 Removed {before_dedup - after_dedup:,} duplicate events")
 
     print(f"\n✓ Retrieved {len(df):,} economic events")
 
@@ -316,10 +367,10 @@ def main():
 
     # Get project root directory (cross-platform)
     script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    project_root = script_dir.parent.parent  # Scripts are in task_XX subdirectories
 
     # Load existing price data with sessions
-    price_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_sessions.csv'
+    price_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_sessions.csv'
     print(f"\nLoading price data from: {price_file}")
     price_df = pd.read_csv(price_file)
     price_df['timestamp'] = pd.to_datetime(price_df['timestamp'], utc=True)
@@ -367,7 +418,7 @@ def main():
     price_df = generate_event_features(price_df, events_df)
 
     # Step 4: Save enhanced data
-    output_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_events.csv'
+    output_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_events.csv'
     price_df.to_csv(output_file, index=False)
 
     print("\n" + "="*80)

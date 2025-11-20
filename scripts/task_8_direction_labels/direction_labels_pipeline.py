@@ -250,10 +250,10 @@ def main():
 
     # Get project root directory (cross-platform)
     script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    project_root = script_dir.parent.parent  # Scripts are in task_XX subdirectories
 
     # Load data with MFE/MAE labels
-    input_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_labels.csv'
+    input_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_labels.csv'
     print(f"\nLoading data from: {input_file}")
     df = pd.read_csv(input_file)
     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
@@ -286,7 +286,7 @@ def main():
     analyze_direction_labels(df)
 
     # Save enhanced data
-    output_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_direction.csv'
+    output_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_direction.csv'
     df.to_csv(output_file, index=False)
 
     print("\n" + "="*80)

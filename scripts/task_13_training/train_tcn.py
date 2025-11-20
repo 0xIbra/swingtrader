@@ -874,7 +874,7 @@ def main():
         'learning_rate': 1e-4,
         'weight_decay': 1e-5,
         'grad_clip': 1.0,
-        'early_stopping_patience': 10,
+        'early_stopping_patience': 15,
         'n_features': 55,
         'n_layers': 5,
         'dropout': 0.2,

@@ -16,6 +16,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from tqdm import tqdm
 import time
+from pathlib import Path
 
 # EODHD API Configuration
 API_KEY = os.environ.get("EODHD_API_TOKEN")
@@ -220,10 +221,10 @@ def main():
 
     # Get project root directory (cross-platform)
     script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    project_root = script_dir.parent.parent  # Scripts are in task_XX subdirectories
 
     # Load existing price data with sentiment
-    price_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_sentiment.csv'
+    price_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_sentiment.csv'
     print(f"\nLoading price data from: {price_file}")
     price_df = pd.read_csv(price_file)
     price_df['timestamp'] = pd.to_datetime(price_df['timestamp'], utc=True)
@@ -257,7 +258,7 @@ def main():
     price_df = compute_macro_features(price_df, macro_data)
 
     # Step 3: Save enhanced data
-    output_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_macro.csv'
+    output_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_macro.csv'
     price_df.to_csv(output_file, index=False)
 
     print("\n" + "="*80)

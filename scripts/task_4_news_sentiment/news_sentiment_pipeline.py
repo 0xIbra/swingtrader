@@ -15,7 +15,9 @@ import pandas as pd
 from datetime import datetime, timedelta
 from tqdm import tqdm
 import time
+from pathlib import Path
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 
 # EODHD API Configuration
@@ -29,7 +31,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 def fetch_news_data(start_date: datetime, end_date: datetime, api_key: str) -> pd.DataFrame:
     """
-    Fetch news articles from EODHD API.
+    Fetch ALL news articles from EODHD API using proper offset-based pagination.
 
     Args:
         start_date: Start date for news
@@ -40,30 +42,33 @@ def fetch_news_data(start_date: datetime, end_date: datetime, api_key: str) -> p
         DataFrame with news articles
     """
     all_news = []
-
-    # EODHD news API parameters
-    # The API supports filtering by date and tags
     url = BASE_URL
 
     print(f"\nFetching news from EODHD API...")
     print(f"Date range: {start_date.date()} to {end_date.date()}")
     print()
 
-    # Split into monthly chunks
-    current_date = start_date
+    # Format dates for API
+    from_date = start_date.strftime('%Y-%m-%d')
+    to_date = end_date.strftime('%Y-%m-%d')
 
-    with tqdm(total=(end_date - start_date).days, desc="Fetching news") as pbar:
-        while current_date < end_date:
-            chunk_end = min(current_date + timedelta(days=30), end_date)
+    # Pagination parameters
+    limit = 1000  # Max per request
+    offset = 0
+    total_fetched = 0
 
+    print("📥 Fetching with offset-based pagination...")
+
+    with tqdm(desc="Fetching news", unit=" batches") as pbar:
+        while True:
             params = {
                 'api_token': api_key,
-                'from': current_date.strftime('%Y-%m-%d'),
-                'to': chunk_end.strftime('%Y-%m-%d'),
-                'limit': 1000,  # Max articles per request
-                'offset': 0,
-                'fmt': 'json',
-                'tag': 'forex,currency,fx'  # Filter for forex-related news
+                's': 'EURUSD.FOREX',  # Symbol for forex news
+                'from': from_date,
+                'to': to_date,
+                'limit': limit,
+                'offset': offset,
+                'fmt': 'json'
             }
 
             try:
@@ -72,33 +77,63 @@ def fetch_news_data(start_date: datetime, end_date: datetime, api_key: str) -> p
                 if response.status_code == 200:
                     data = response.json()
 
+                    # Handle different response formats
                     if isinstance(data, list):
-                        all_news.extend(data)
+                        batch = data
                     elif isinstance(data, dict) and 'data' in data:
-                        all_news.extend(data['data'])
+                        batch = data['data']
+                    else:
+                        print(f"\n⚠️  Unexpected response format at offset {offset}")
+                        break
+
+                    # Add batch to results
+                    batch_size = len(batch)
+                    all_news.extend(batch)
+                    total_fetched += batch_size
+
+                    pbar.set_postfix({"fetched": total_fetched, "offset": offset})
+                    pbar.update(1)
+
+                    # Check if we got fewer than limit (means we're done)
+                    if batch_size < limit:
+                        print(f"\n✓ Reached end of results (got {batch_size} \u003c {limit})")
+                        break
+
+                    # Move to next page
+                    offset += limit
+
+                    # Rate limiting
+                    time.sleep(0.5)
+
                 else:
-                    print(f"\nWarning: API returned status code {response.status_code}")
+                    print(f"\n❌ API returned status code {response.status_code}")
                     if response.text:
                         print(f"Response: {response.text[:200]}")
-
-                # Rate limiting
-                time.sleep(0.5)
+                    break
 
             except Exception as e:
-                print(f"\nError fetching news for {current_date}: {e}")
+                print(f"\n❌ Error fetching news at offset {offset}: {e}")
+                break
 
-            pbar.update((chunk_end - current_date).days)
-            current_date = chunk_end
-
-    print(f"\n✓ Retrieved {len(all_news):,} news articles")
+    print(f"\n✅ Retrieved {total_fetched:,} total news articles")
 
     if not all_news:
-        print("\nWarning: No news retrieved from API")
+        print("\n⚠️  Warning: No news retrieved from API")
         return pd.DataFrame()
 
     # Convert to DataFrame
     df = pd.DataFrame(all_news)
+
+    # Remove duplicates (in case of overlapping data)
+    if 'title' in df.columns:
+        before_dedup = len(df)
+        df = df.drop_duplicates(subset=['title'], keep='first')
+        after_dedup = len(df)
+        if before_dedup != after_dedup:
+            print(f"🧹 Removed {before_dedup - after_dedup:,} duplicate articles")
+
     return df
+
 
 
 def process_news_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -260,11 +295,11 @@ Do not include any explanation, just the JSON."""
 
 def generate_sentiment_features(price_df: pd.DataFrame, news_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Generate hourly sentiment features from news data.
+    Generate 4H sentiment features from news data.
 
-    For each 1h bar:
-    - Get news headlines from that hour
-    - Extract sentiment using LLM
+    For each 4H bar:
+    - Get all news headlines from that 4H window
+    - Extract sentiment using LLM (one call per 4H bar with news)
     - Assign sentiment scores
     """
     if news_df.empty:
@@ -291,33 +326,55 @@ def generate_sentiment_features(price_df: pd.DataFrame, news_df: pd.DataFrame) -
     price_df['sent_JPY'] = 0.0
     price_df['sent_risk'] = 0.0
 
-    # Group news by hour
-    news_df['hour'] = news_df['timestamp'].dt.floor('h')
-    news_by_hour = news_df.groupby('hour')['title'].apply(list).to_dict()
+    # Group news by 4H windows (aligned to price bars)
+    news_df['bar_4h'] = news_df['timestamp'].dt.floor('4H')
+    news_by_4h = news_df.groupby('bar_4h')['title'].apply(list).to_dict()
 
-    print(f"✓ Grouped news into {len(news_by_hour)} hourly buckets")
+    print(f"✓ Grouped news into {len(news_by_4h)} 4H buckets")
+    print(f"✓ Processing {len(news_by_4h)} 4H windows with news using 5 concurrent workers")
 
-    # Process ALL hours that have news (not sampling)
-    # This gives us real sentiment for every hour with actual news articles
+    # Concurrent LLM sentiment extraction
+    def process_bar(bar_key, headlines):
+        """Process a single 4H bar with LLM sentiment extraction."""
+        sentiment = extract_sentiment_with_llm(headlines, bar_key.strftime('%Y-%m-%d %H:00'))
+        return bar_key, sentiment
 
-    print(f"✓ Processing {len(news_by_hour)} hours with news (all news hours)")
+    # Use ThreadPoolExecutor for concurrent API calls
+    sentiment_results = {}
+    max_workers = 5  # 5 concurrent API calls
 
-    sentiment_cache = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        future_to_bar = {
+            executor.submit(process_bar, bar_key, headlines): bar_key
+            for bar_key, headlines in news_by_4h.items()
+        }
 
-    # Map each hour with news to its sentiment
-    for hour_key, headlines in tqdm(news_by_hour.items(), desc="Extracting sentiment"):
-        cache_key = hour_key.strftime('%Y-%m-%d-%H')
+        # Process completed tasks with progress bar
+        with tqdm(total=len(future_to_bar), desc="Extracting sentiment (concurrent)") as pbar:
+            for future in as_completed(future_to_bar):
+                try:
+                    bar_key, sentiment = future.result()
+                    sentiment_results[bar_key] = sentiment
+                    pbar.update(1)
+                except Exception as e:
+                    bar_key = future_to_bar[future]
+                    print(f"\n⚠️  Error processing {bar_key}: {e}")
+                    # Use neutral sentiment on error
+                    sentiment_results[bar_key] = {
+                        'sent_USD': 0.0,
+                        'sent_EUR': 0.0,
+                        'sent_GBP': 0.0,
+                        'sent_JPY': 0.0,
+                        'sent_risk': 0.0
+                    }
+                    pbar.update(1)
 
-        if cache_key in sentiment_cache:
-            sentiment = sentiment_cache[cache_key]
-        else:
-            sentiment = extract_sentiment_with_llm(headlines, hour_key.strftime('%Y-%m-%d %H:00'))
-            sentiment_cache[cache_key] = sentiment
-            # Rate limit API calls
-            time.sleep(0.2)
-
-        # Find all bars that match this hour
-        matching_bars = price_df[price_df['timestamp'].dt.floor('h') == hour_key].index
+    # Apply sentiment results to price bars
+    print("\n✓ Applying sentiment to price bars...")
+    for bar_key, sentiment in sentiment_results.items():
+        # Find all bars that match this 4H window
+        matching_bars = price_df[price_df['timestamp'].dt.floor('4H') == bar_key].index
 
         for idx in matching_bars:
             price_df.loc[idx, 'sent_USD'] = sentiment['sent_USD']
@@ -326,14 +383,14 @@ def generate_sentiment_features(price_df: pd.DataFrame, news_df: pd.DataFrame) -
             price_df.loc[idx, 'sent_JPY'] = sentiment['sent_JPY']
             price_df.loc[idx, 'sent_risk'] = sentiment['sent_risk']
 
-    # Apply exponential decay: sentiment fades over 12 hours after news
-    print("\n✓ Applying sentiment decay (12-hour half-life)...")
-    decay_hours = 12
+    # Apply exponential decay: sentiment fades over 3 days (18 bars of 4H) after news
+    print("\n✓ Applying sentiment decay (3-day half-life for 4H bars)...")
+    decay_bars = 18  # 3 days = 18 * 4H bars
 
     for col in ['sent_USD', 'sent_EUR', 'sent_GBP', 'sent_JPY', 'sent_risk']:
         # Forward fill with decay
         last_value = 0.0
-        hours_since_last = 999
+        bars_since_last = 999
 
         for idx in range(len(price_df)):
             current_value = price_df.loc[idx, col]
@@ -341,18 +398,18 @@ def generate_sentiment_features(price_df: pd.DataFrame, news_df: pd.DataFrame) -
             if current_value != 0.0:
                 # New sentiment event
                 last_value = current_value
-                hours_since_last = 0
+                bars_since_last = 0
             else:
                 # Apply decay
-                hours_since_last += 1
-                if hours_since_last <= decay_hours and last_value != 0.0:
-                    # Exponential decay: value * exp(-hours/half_life)
-                    decay_factor = 0.5 ** (hours_since_last / decay_hours)
+                bars_since_last += 1
+                if bars_since_last <= decay_bars and last_value != 0.0:
+                    # Exponential decay: value * exp(-bars/half_life)
+                    decay_factor = 0.5 ** (bars_since_last / decay_bars)
                     price_df.loc[idx, col] = last_value * decay_factor
                 else:
                     # Reset if too far from last event
                     last_value = 0.0
-                    hours_since_last = 999
+                    bars_since_last = 999
 
     print(f"\n✓ Generated sentiment features")
     print(f"✓ Sentiment statistics:")
@@ -379,10 +436,10 @@ def main():
 
     # Get project root directory (cross-platform)
     script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    project_root = script_dir.parent.parent  # Scripts are in task_XX subdirectories
 
     # Load existing price data with events
-    price_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_events.csv'
+    price_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_events.csv'
     print(f"\nLoading price data from: {price_file}")
     price_df = pd.read_csv(price_file)
     price_df['timestamp'] = pd.to_datetime(price_df['timestamp'], utc=True)
@@ -435,7 +492,7 @@ def main():
             print(f"\n✓ News cached to: {news_file}")
 
     # Check if sentiment-enhanced data already exists
-    output_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_sentiment.csv'
+    output_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_sentiment.csv'
 
     if os.path.exists(output_file):
         print("\n" + "="*80)

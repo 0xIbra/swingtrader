@@ -389,10 +389,10 @@ def main():
     
     # Get project root directory (cross-platform)
     script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    project_root = script_dir.parent.parent  # Scripts are in task_XX subdirectories
     
     # Load sequence dataset
-    input_file = project_root / 'data' / 'sequences_eurusd_1h_168.pkl'
+    input_file = project_root / 'data' / 'sequences_eurusd_4h_42.pkl'
     print(f"\nLoading sequence dataset: {input_file}")
 
     with open(input_file, 'rb') as f:

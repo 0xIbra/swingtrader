@@ -177,7 +177,7 @@ def compute_candle_features(df: pd.DataFrame, atr_col: str = 'atr_14') -> pd.Dat
     return df
 
 
-def compute_recent_structure(df: pd.DataFrame, window: int = 168) -> pd.DataFrame:
+def compute_recent_structure(df: pd.DataFrame, window: int = 42) -> pd.DataFrame:
     """
     Compute distance from recent highs/lows and bars since extreme.
 
@@ -300,10 +300,10 @@ def compute_all_price_features(df: pd.DataFrame) -> pd.DataFrame:
     df = compute_atr(df, period=14)
 
     # 3. Rolling volatility (1 day, 3 days, 1 week)
-    df = compute_rolling_volatility(df, windows=[24, 72, 168])
+    df = compute_rolling_volatility(df, windows=[6, 18, 42])
 
     # 4. EMAs (1 day, 3 days, 1 week)
-    df = compute_ema(df, periods=[24, 72, 168])
+    df = compute_ema(df, periods=[6, 18, 42])
 
     # 5. RSI(14)
     df = compute_rsi(df, period=14)
@@ -312,7 +312,7 @@ def compute_all_price_features(df: pd.DataFrame) -> pd.DataFrame:
     df = compute_candle_features(df, atr_col='atr_14')
 
     # 7. Recent structure (1 week = 168 hours)
-    df = compute_recent_structure(df, window=168)
+    df = compute_recent_structure(df, window=42)
 
     # 8. ATR-normalize key features for regime invariance
     df = normalize_by_atr(df, atr_col='atr_14')
@@ -329,10 +329,10 @@ def main():
 
     # Get project root directory (cross-platform)
     script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    project_root = script_dir.parent.parent  # Scripts are in task_XX subdirectories
 
     # Load existing data with macro features
-    input_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_macro.csv'
+    input_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_macro.csv'
     print(f"\nLoading data from: {input_file}")
     df = pd.read_csv(input_file)
     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
@@ -394,7 +394,7 @@ def main():
     print("\n✓ NaN values handled")
 
     # Save enhanced data
-    output_file = project_root / 'data' / 'EURUSD_1H_2020_2025_with_price_features.csv'
+    output_file = project_root / 'data' / 'EURUSD_4H_2020_2025_with_price_features.csv'
     df.to_csv(output_file, index=False)
 
     print("\n" + "="*80)

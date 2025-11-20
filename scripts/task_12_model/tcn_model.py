@@ -501,7 +501,7 @@ def demo_model():
     
     # Use relative path from script location
     script_dir = Path(__file__).parent
-    project_root = script_dir.parent
+    project_root = script_dir.parent.parent  # Scripts are in task_XX subdirectories
     data_file = project_root / 'data' / 'train_normalized.pkl'
     
     dataset = SequenceDataset(str(data_file))
